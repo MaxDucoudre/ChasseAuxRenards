@@ -25,6 +25,51 @@
 	// Socket client
 	int sclient;
 
+	// login
+	char* login;
+
+
+
+int jouerCoup(int x, int y)
+{
+	// verifier x et y pas en dehors de la grille
+
+	/* Demande de coup au serveur*/
+	struct msg propBuf;
+
+	propBuf.code = PROP; // code INIT = 0
+	propBuf.data[0] = x;
+	propBuf.data[1] = y;
+	propBuf.data[2] = 0;
+
+	int i;
+	//propBuf.login = login;
+	memcpy(propBuf.login, login, sizeof(login));
+
+	int octet_sent = write(sclient, &propBuf, sizeof(propBuf));
+	printf("Prop snd : %d (%d) %s\n", octet_sent, propBuf.code, propBuf.login);
+
+	/* Récupération de la réponse*/
+	struct msg server_answer;
+	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
+	printf("return code %d!\n",server_answer.code);
+
+	if(server_answer.code == ERREUR){
+		printf("Prop failed!\n");
+		exit(1);
+	}
+	printf("prop rcv : %d (%d)\n", octet_read, server_answer.code);
+
+	return server_answer.data[0];
+
+
+}
+
+
+int startPlay()
+{
+	printf("Renards en 1 1 : %d\n", jouerCoup(3,2));
+}
 
 int main(int argc, char const *argv[])
 {
@@ -37,6 +82,7 @@ int main(int argc, char const *argv[])
 	int gridSize = atoi(argv[3]);
 	int nbRenards = atoi(argv[4]);
 	int seed = atoi(argv[6]);
+	login = argv[5];
 
 
 	struct addrinfo *res;
@@ -77,13 +123,16 @@ int main(int argc, char const *argv[])
 	initBuf.data[1] = nbRenards;
 	initBuf.data[2] = seed;
 
-	// Login
-	for(int i = 0; i<(sizeof argv[5] / sizeof argv[5][0]); i++)
-		initBuf.login[i] = argv[5][i];
+	int i = 0;
+	//initBuf.login = login;
+	memcpy(initBuf.login, login, sizeof(login));
 
 	/* Envoi au serveur l'initialisation*/
 	int octet_sent = write(sclient, &initBuf, sizeof(initBuf));
-	printf("init sent : %d (%d)\n", octet_sent, INIT);
+	//printf("Init snd : %d (%d)\n", octet_sent, INIT);
+
+	printf("Init snd : %s\n", initBuf.login);
+	printf("sku : %s\n", login);
 
 
 	/* Réponse du serveur sur l'initialisation*/
@@ -93,6 +142,7 @@ int main(int argc, char const *argv[])
 		printf("Init failed!\n");
 		exit(1);
 	}
+	//printf("Init rcv : %d (%d)\n", octet_read, server_answer.code);
 
 
 	/* Probabilities grid init*/
@@ -101,6 +151,14 @@ int main(int argc, char const *argv[])
 	/* Probabilities grid init*/
 	answerGrid = malloc((gridSize) * sizeof(int));
 
+
+
+	printf("noob %d\n", sclient);
+
+
+
+	startPlay();
+
 	/* close socket and connection*/
 	shutdown(sclient, SHUT_RDWR);
 	close(sclient);
@@ -108,15 +166,10 @@ int main(int argc, char const *argv[])
 	return EXIT_SUCCESS;
 }
 
-int jouerCoup(int x, int y)
-{
-	// verifier x et y pas en dehors de la grille
 
-
-
-}
 
 void updateProbaGrid()
 {
 
 }
+
