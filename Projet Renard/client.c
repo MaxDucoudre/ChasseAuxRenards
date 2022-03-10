@@ -12,6 +12,7 @@
 
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
 
 #include "message.c"
 
@@ -22,6 +23,9 @@
 	// grid with anwers
 	int* answerGrid;
 
+	int gridSize;
+
+
 	// Socket client
 	int sclient;
 
@@ -30,37 +34,35 @@
 
 
 
+/* Fonction permettant de jouer un coup sur la grille dans le serveur*/
 int jouerCoup(int x, int y)
 {
 	// verifier x et y pas en dehors de la grille
 
 	/* Demande de coup au serveur*/
 	struct msg propBuf;
-
-	propBuf.code = PROP; // code INIT = 0
-	propBuf.data[0] = x;
-	propBuf.data[1] = y;
+	propBuf.code = htonl(PROP); // code PROP = 1
+	propBuf.data[0] = htonl(x);
+	propBuf.data[1] = htonl(y);
 	propBuf.data[2] = 0;
-
-	int i;
 	//propBuf.login = login;
-	memcpy(propBuf.login, login, sizeof(login));
+	strcpy(propBuf.login, login);
+
 
 	int octet_sent = write(sclient, &propBuf, sizeof(propBuf));
-	printf("Prop snd : %d (%d) %s\n", octet_sent, propBuf.code, propBuf.login);
+
 
 	/* Récupération de la réponse*/
 	struct msg server_answer;
 	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
-	printf("return code %d!\n",server_answer.code);
 
-	if(server_answer.code == ERREUR){
+	if(ntohs(server_answer.code) == ERREUR){
 		printf("Prop failed!\n");
-		exit(1);
+		//exit(1);
 	}
-	printf("prop rcv : %d (%d)\n", octet_read, server_answer.code);
 
-	return server_answer.data[0];
+
+	return ntohl(server_answer.data[0]);
 
 
 }
@@ -68,8 +70,26 @@ int jouerCoup(int x, int y)
 
 int startPlay()
 {
-	printf("Renards en 1 1 : %d\n", jouerCoup(3,2));
+
+	/* Probabilities grid init*/
+	probaGrid = malloc((gridSize * gridSize) * sizeof(int));
+
+	/* Probabilities grid init*/
+	answerGrid = malloc((gridSize) * sizeof(int));
+
+	printf("%d\n", gridSize);
+
+	for(int i = 0; i < gridSize; i++)
+	{
+		printf("%d\n", i);
+		for(int j = 0; j<gridSize; j++)
+		{
+			printf("Renards en %d %d : %d\n", i,j, jouerCoup(i,j));
+
+		}
+	}
 }
+
 
 int main(int argc, char const *argv[])
 {
@@ -79,10 +99,23 @@ int main(int argc, char const *argv[])
 		printf("Usage: %s <IP-address> <port number> <grid_size> <nb_de_renard> <user> <seed>\n", argv[0]);
 		exit(1);
 	}
-	int gridSize = atoi(argv[3]);
+
+	gridSize = atoi(argv[3]);
 	int nbRenards = atoi(argv[4]);
 	int seed = atoi(argv[6]);
-	login = argv[5];
+
+	/* Récupération du login*/
+	login = malloc(sizeof(char) * LOGIN_MAX_SIZE);
+	for(int i = 0; i< LOGIN_MAX_SIZE; i++)
+	{
+		if(i < sizeof(argv[5]) / sizeof(argv[5][0]))
+		{
+			login[i] = argv[5][i];
+		} else
+		{
+			login[i] = '\0';
+		}
+	}
 
 
 	struct addrinfo *res;
@@ -122,41 +155,34 @@ int main(int argc, char const *argv[])
 	initBuf.data[0] = gridSize;
 	initBuf.data[1] = nbRenards;
 	initBuf.data[2] = seed;
-
-	int i = 0;
-	//initBuf.login = login;
-	memcpy(initBuf.login, login, sizeof(login));
+	strcpy(initBuf.login, login);
 
 	/* Envoi au serveur l'initialisation*/
 	int octet_sent = write(sclient, &initBuf, sizeof(initBuf));
-	//printf("Init snd : %d (%d)\n", octet_sent, INIT);
 
-	printf("Init snd : %s\n", initBuf.login);
-	printf("sku : %s\n", login);
+	printf(
+		"INIT : \n
+		octets : %d\n
+		code : %d
+		gridSize : %d\n
+		nbRenards : %d\n
+		seed : %d\n
+		login : %s\n
+		");
 
 
 	/* Réponse du serveur sur l'initialisation*/
 	struct msg server_answer;
 	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
-	if(server_answer.code != INIT_ACK){
+	if(server_answer.code == ERREUR){
 		printf("Init failed!\n");
 		exit(1);
 	}
-	//printf("Init rcv : %d (%d)\n", octet_read, server_answer.code);
-
-
-	/* Probabilities grid init*/
-	probaGrid = malloc((gridSize * gridSize) * sizeof(int));
-
-	/* Probabilities grid init*/
-	answerGrid = malloc((gridSize) * sizeof(int));
+	printf("Init rcv : %d (%d)\n", octet_read, server_answer.code);
 
 
 
-	printf("noob %d\n", sclient);
-
-
-
+	// Starting algorithms to play the game
 	startPlay();
 
 	/* close socket and connection*/

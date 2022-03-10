@@ -15,11 +15,14 @@
 #define FIN_ACK  6
 #define ERREUR   7
 
+#define LOGIN_MAX_SIZE 12
+
+
 
 struct msg {
     char code;
     int data[3];
-    char login[12];
+    char login[LOGIN_MAX_SIZE];
 };
 
 #endif
