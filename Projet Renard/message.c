@@ -21,7 +21,7 @@
 
 struct msg {
     char code;
-    int data[3];
+    uint32_t data[3];
     char login[LOGIN_MAX_SIZE];
 };
 

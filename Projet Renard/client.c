@@ -39,34 +39,56 @@ int jouerCoup(int x, int y)
 {
 	// verifier x et y pas en dehors de la grille
 
+
 	/* Demande de coup au serveur*/
+	printf("--------------PROP--------------\n");
 	struct msg propBuf;
-	propBuf.code = htonl(PROP); // code PROP = 1
-	propBuf.data[0] = htonl(x);
-	propBuf.data[1] = htonl(y);
-	propBuf.data[2] = 0;
-	//propBuf.login = login;
+	propBuf.code = PROP; // code PROP = 1
+	propBuf.data[0] = x; // position x htonl() ?
+	propBuf.data[1] = y; // position y
 	strcpy(propBuf.login, login);
 
-
 	int octet_sent = write(sclient, &propBuf, sizeof(propBuf));
+	printf("PROP SND TO SERVER : \n octets : %d\n code : %d (exp:1)\n coordX : %d\n coordY : %d\n login : %s\n\n", 
+		octet_sent, propBuf.code, propBuf.data[0], propBuf.data[1], propBuf.login);
 
 
-	/* Récupération de la réponse*/
+	/* Récupération de la réponse du serveur*/
 	struct msg server_answer;
 	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
 
-	if(ntohs(server_answer.code) == ERREUR){
+	printf("PROP RVC FROM SERVER : \n octets : %d\n code : %d(exp:4)\n renards : %d\n",
+		octet_read, server_answer.code, ntohl(server_answer.data[0]));
+
+	if(server_answer.code == ERREUR){
 		printf("Prop failed!\n");
-		//exit(1);
+		exit(1);
 	}
 
-
+	printf("------------END PROP------------\n\n");
 	return ntohl(server_answer.data[0]);
-
-
 }
 
+int endGame()
+{
+	printf("--------------FIN--------------\n");
+
+	struct msg endBuf;
+	endBuf.code = FIN; 
+	int octet_sent = write(sclient, &endBuf, sizeof(endBuf));
+	printf("FIN SND TO SERVER : \n octets : %d\n code : %d (exp:2)\n\n", 
+		octet_sent, endBuf.code);
+
+
+	struct msg server_answer;
+	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
+	printf("FIN RVC FROM SERVER : \n octets : %d\n code : %d (exp:6)\n",
+		octet_read, server_answer.code);
+
+
+	printf("-------------END FIN-------------\n");
+
+}
 
 int startPlay()
 {
@@ -77,8 +99,10 @@ int startPlay()
 	/* Probabilities grid init*/
 	answerGrid = malloc((gridSize) * sizeof(int));
 
-	printf("%d\n", gridSize);
+	printf("Renards en 1 1 : %d\n", jouerCoup(1,1));
 
+
+	/* FORCE BRUT 
 	for(int i = 0; i < gridSize; i++)
 	{
 		printf("%d\n", i);
@@ -88,6 +112,9 @@ int startPlay()
 
 		}
 	}
+	*/
+
+	endGame();
 }
 
 
@@ -144,32 +171,29 @@ int main(int argc, char const *argv[])
 		res = res->ai_next; // itération dans la liste chaîné
 	}
 
-	assert(testConnect >= 0); 
+	if(testConnect < 0)
+	{
+		printf("Impossible to connect!");
+		exit(1);
+	} 
+		assert(testConnect >= 0);
+
 	assert(sclient >= 0);
 
 
 	/* Initialisation de la grille*/
+	printf("--------------INIT--------------\n");
 	struct msg initBuf;
-
 	initBuf.code = INIT; // code INIT = 0
-	initBuf.data[0] = gridSize;
-	initBuf.data[1] = nbRenards;
-	initBuf.data[2] = seed;
+	initBuf.data[0] = gridSize; // taille de la grille
+	initBuf.data[1] = nbRenards; // nombre de renards
+	initBuf.data[2] = seed; // seed de la grille
 	strcpy(initBuf.login, login);
 
 	/* Envoi au serveur l'initialisation*/
 	int octet_sent = write(sclient, &initBuf, sizeof(initBuf));
-
-	printf(
-		"INIT : \n
-		octets : %d\n
-		code : %d
-		gridSize : %d\n
-		nbRenards : %d\n
-		seed : %d\n
-		login : %s\n
-		");
-
+	printf("INIT SND TO SERVER : \n octets : %d\n code : %d (exp:0)\n gridSize : %d\n nbRenards : %d\n seed : %d\n login : %s\n\n",
+	 octet_sent, initBuf.code, initBuf.data[0], initBuf.data[1],  initBuf.data[2], initBuf.login);
 
 	/* Réponse du serveur sur l'initialisation*/
 	struct msg server_answer;
@@ -178,19 +202,26 @@ int main(int argc, char const *argv[])
 		printf("Init failed!\n");
 		exit(1);
 	}
-	printf("Init rcv : %d (%d)\n", octet_read, server_answer.code);
+	printf("INIT RCV FROM SERVER : \n octets : %d\n code : %d (exp:3)\n", 
+		octet_read, server_answer.code);
+	printf("-------------END INIT-------------\n\n");
 
 
 
 	// Starting algorithms to play the game
-	startPlay();
+	//startPlay();
+
+
+
 
 	/* close socket and connection*/
-	shutdown(sclient, SHUT_RDWR);
+	shçutdown(sclient, SHUT_RDWR);
 	close(sclient);
 
 	return EXIT_SUCCESS;
 }
+
+
 
 
 
