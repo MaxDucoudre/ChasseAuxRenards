@@ -14,6 +14,8 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 
+#include <signal.h> 
+
 #include "message.c"
 
 
@@ -25,73 +27,131 @@
 
 	int gridSize;
 
-
 	// Socket client
 	int sclient;
 
 	// login
 	char* login;
 
+	int nb_coup;
 
+void endProg()
+{
+	/* close socket and connection*/
+	shutdown(sclient, SHUT_RDWR);
+	close(sclient);
+	printf("\nFin du programme! \n");
+	exit(0);
+}
+
+int writeInServer(struct msg message)
+{
+	int octet_sent = 0;
+
+	octet_sent += write(sclient, &message.code,    sizeof(message.code));
+	octet_sent += write(sclient, &message.data[0], sizeof(message.data[0]));
+	octet_sent += write(sclient, &message.data[1], sizeof(message.data[1]));
+	octet_sent += write(sclient, &message.data[1], sizeof(message.data[2]));
+	octet_sent += write(sclient, &message.login,   sizeof(message.login));
+	message.octets = octet_sent;
+
+	if(octet_sent != 25)
+	{
+		printf("Nombre d'octets envoyés mauvais!");
+		endGame();
+	}
+	return octet_sent;
+
+}
+
+struct msg readInServer()
+{
+
+	int octet_read = 0;
+	struct msg message;
+
+	octet_read += read(sclient, &message.code,    sizeof(message.code));
+	octet_read += read(sclient, &message.data[0], sizeof(message.data[0]));
+	octet_read += read(sclient, &message.data[1], sizeof(message.data[1]));
+	octet_read += read(sclient, &message.data[1], sizeof(message.data[2]));
+	octet_read += read(sclient, &message.login,   sizeof(message.login));
+	message.octets = octet_read;
+
+	return message;
+}
+
+int endGame()
+{
+	if(DEBUG) printf("\n--------------FIN--------------\n");
+	struct msg endBuf;
+	endBuf.code = FIN; 
+	int octet_sent = write(sclient, &endBuf, sizeof(endBuf));
+	if(DEBUG) printf("FIN SND TO SERVER : \n octets : %d\n code : %d (exp:2)\n\n", 
+		octet_sent, endBuf.code);
+
+
+	struct msg server_answer = readInServer();
+	if(DEBUG) printf("FIN RVC FROM SERVER : \n octets : %d\n code : %d (exp:6)\n",
+		server_answer.octets, server_answer.code);
+
+
+	if(DEBUG) printf("-------------END FIN-------------\n");
+
+	endProg();
+}
 
 /* Fonction permettant de jouer un coup sur la grille dans le serveur*/
 int jouerCoup(int x, int y)
 {
 	// verifier x et y pas en dehors de la grille
-
+	if(x > gridSize || y > gridSize || x < 0 || y < 0)
+	{
+		printf("Coords out of grid!\n");
+		endGame();
+	}
 
 	/* Demande de coup au serveur*/
-	printf("--------------PROP--------------\n");
+	if(DEBUG) printf("--------------PROP--------------\n");
 	struct msg propBuf;
 	propBuf.code = PROP; // code PROP = 1
-	propBuf.data[0] = x; // position x htonl() ?
-	propBuf.data[1] = y; // position y
+	propBuf.data[0] = htonl(x); // position x 
+	propBuf.data[1] = htonl(y); // position y
+	propBuf.data[2] = 0; // position y
+
 	strcpy(propBuf.login, login);
 
-	int octet_sent = write(sclient, &propBuf, sizeof(propBuf));
-	printf("PROP SND TO SERVER : \n octets : %d\n code : %d (exp:1)\n coordX : %d\n coordY : %d\n login : %s\n\n", 
-		octet_sent, propBuf.code, propBuf.data[0], propBuf.data[1], propBuf.login);
+	int octet_sent = writeInServer(propBuf);
+	if(DEBUG) printf("PROP SND TO SERVER : \n octets : %d\n code : %d (exp:1)\n coordX : %d\n coordY : %d\n login : %s\n\n", 
+		octet_sent, propBuf.code, ntohl(propBuf.data[0]),  ntohl(propBuf.data[1]), propBuf.login);
 
 
 	/* Récupération de la réponse du serveur*/
-	struct msg server_answer;
-	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
+	struct msg server_answer = readInServer();
+	//int octet_read = read(sclient, &server_answer, sizeof(server_answer));
 
-	printf("PROP RVC FROM SERVER : \n octets : %d\n code : %d(exp:4)\n renards : %d\n",
-		octet_read, server_answer.code, ntohl(server_answer.data[0]));
+	if(DEBUG) printf("PROP RVC FROM SERVER : \n octets : %d\n code : %d(exp:4 or 5)\n renards : %d\n",
+		server_answer.octets, server_answer.code, ntohl(server_answer.data[0]));
 
 	if(server_answer.code == ERREUR){
 		printf("Prop failed!\n");
-		exit(1);
+		endGame();
 	}
 
-	printf("------------END PROP------------\n\n");
+	if(server_answer.code == GAGNE)
+	{
+		if(DEBUG) printf("------------END PROP------------\n\n");
+		endGame();
+	}
+
+	nb_coup++;
+	if(DEBUG) printf("------------END PROP------------\n\n");
 	return ntohl(server_answer.data[0]);
 }
 
-int endGame()
-{
-	printf("--------------FIN--------------\n");
-
-	struct msg endBuf;
-	endBuf.code = FIN; 
-	int octet_sent = write(sclient, &endBuf, sizeof(endBuf));
-	printf("FIN SND TO SERVER : \n octets : %d\n code : %d (exp:2)\n\n", 
-		octet_sent, endBuf.code);
-
-
-	struct msg server_answer;
-	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
-	printf("FIN RVC FROM SERVER : \n octets : %d\n code : %d (exp:6)\n",
-		octet_read, server_answer.code);
-
-
-	printf("-------------END FIN-------------\n");
-
-}
 
 int startPlay()
 {
+	nb_coup = 0;
 
 	/* Probabilities grid init*/
 	probaGrid = malloc((gridSize * gridSize) * sizeof(int));
@@ -99,23 +159,18 @@ int startPlay()
 	/* Probabilities grid init*/
 	answerGrid = malloc((gridSize) * sizeof(int));
 
-	printf("Renards en 1 1 : %d\n", jouerCoup(1,1));
 
-
-	/* FORCE BRUT 
+	
+	// FORCE BRUT 
 	for(int i = 0; i < gridSize; i++)
 	{
-		printf("%d\n", i);
 		for(int j = 0; j<gridSize; j++)
 		{
-			printf("Renards en %d %d : %d\n", i,j, jouerCoup(i,j));
-
+			jouerCoup(i,j);
 		}
 	}
-	*/
-
-	endGame();
 }
+
 
 
 int main(int argc, char const *argv[])
@@ -180,45 +235,40 @@ int main(int argc, char const *argv[])
 
 	assert(sclient >= 0);
 
+	signal(SIGINT, endProg); // ferme propropement la connection et le socket en cas de SIGINT
+
 
 	/* Initialisation de la grille*/
-	printf("--------------INIT--------------\n");
+	if(DEBUG) printf("--------------INIT--------------\n");
 	struct msg initBuf;
 	initBuf.code = INIT; // code INIT = 0
-	initBuf.data[0] = gridSize; // taille de la grille
-	initBuf.data[1] = nbRenards; // nombre de renards
-	initBuf.data[2] = seed; // seed de la grille
+	initBuf.data[0] = htonl(gridSize); // taille de la grille
+	initBuf.data[1] = htonl(nbRenards); // nombre de renards
+	initBuf.data[2] = htonl(seed); // seed de la grille
 	strcpy(initBuf.login, login);
 
 	/* Envoi au serveur l'initialisation*/
-	int octet_sent = write(sclient, &initBuf, sizeof(initBuf));
-	printf("INIT SND TO SERVER : \n octets : %d\n code : %d (exp:0)\n gridSize : %d\n nbRenards : %d\n seed : %d\n login : %s\n\n",
-	 octet_sent, initBuf.code, initBuf.data[0], initBuf.data[1],  initBuf.data[2], initBuf.login);
+	int octet_sent = writeInServer(initBuf);
+	if(DEBUG) printf("INIT SND TO SERVER : \n octets envoyés : %d\n code : %d (exp:0)\n gridSize : %d\n nbRenards : %d\n seed : %d\n login : %s\n\n",
+	 octet_sent, initBuf.code, ntohl(initBuf.data[0]), ntohl(initBuf.data[1]),  ntohl(initBuf.data[2]), initBuf.login);
+
+
+
 
 	/* Réponse du serveur sur l'initialisation*/
-	struct msg server_answer;
-	int octet_read = read(sclient, &server_answer, sizeof(server_answer));
+	struct msg server_answer = readInServer();
 	if(server_answer.code == ERREUR){
 		printf("Init failed!\n");
-		exit(1);
+		endGame();
 	}
-	printf("INIT RCV FROM SERVER : \n octets : %d\n code : %d (exp:3)\n", 
-		octet_read, server_answer.code);
-	printf("-------------END INIT-------------\n\n");
 
-
+	if(DEBUG) printf("INIT RCV FROM SERVER : \n octets reçus : %d\n code : %d (exp:3)\n", 
+		server_answer.octets, server_answer.code);
+	if(DEBUG) printf("-------------END INIT-------------\n\n");
 
 	// Starting algorithms to play the game
-	//startPlay();
+	startPlay();
 
-
-
-
-	/* close socket and connection*/
-	shçutdown(sclient, SHUT_RDWR);
-	close(sclient);
-
-	return EXIT_SUCCESS;
 }
 
 

@@ -17,12 +17,13 @@
 
 #define LOGIN_MAX_SIZE 12
 
-
+#define DEBUG 1
 
 struct msg {
     char code;
-    uint32_t data[3];
+    int data[3];
     char login[LOGIN_MAX_SIZE];
+    int octets;
 };
 
 #endif
