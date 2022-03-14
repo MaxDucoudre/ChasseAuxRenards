@@ -19,35 +19,39 @@
 #include "message.c"
 
 
-	// grid for probabilities
-	int* probaGrid; 
 
-	// grid with anwers
-	int* answerGrid;
 
-	int gridSize;
 
-	// Socket client
+
+
+
+	/* Pour gérer write & les read au serveur*/
 	int sclient;
-
-	// login
 	char* login;
 
+	/* On formations sur la partie en cours */
+	int gridSize;
 	int nb_coup;
+	int renard_vivants;
 
+	/* Calculs pour le bot qui vas jouer */
+	int* probaGrid; 
+	int* answerGrid;
+
+
+/* Ferme la connection proprement*/
 void endProg()
 {
-	/* close socket and connection*/
 	shutdown(sclient, SHUT_RDWR);
 	close(sclient);
 	printf("\nFin du programme! \n");
 	exit(0);
 }
 
+/* Permet d'envoyer un message au serveur via la structure msg*/
 int writeInServer(struct msg message)
 {
 	int octet_sent = 0;
-
 	octet_sent += write(sclient, &message.code,    sizeof(message.code));
 	octet_sent += write(sclient, &message.data[0], sizeof(message.data[0]));
 	octet_sent += write(sclient, &message.data[1], sizeof(message.data[1]));
@@ -58,15 +62,14 @@ int writeInServer(struct msg message)
 	if(octet_sent != 25)
 	{
 		printf("Nombre d'octets envoyés mauvais!");
-		endGame();
+		//endGame();
 	}
 	return octet_sent;
 
 }
-
+/* Permet de lire un message envoyé par le serveur (à condition d'en avoir écrit un avant) */
 struct msg readInServer()
 {
-
 	int octet_read = 0;
 	struct msg message;
 
@@ -80,6 +83,7 @@ struct msg readInServer()
 	return message;
 }
 
+/* Encois un message de fin au serveur */
 int endGame()
 {
 	if(DEBUG) printf("\n--------------FIN--------------\n");
@@ -103,7 +107,7 @@ int endGame()
 /* Fonction permettant de jouer un coup sur la grille dans le serveur*/
 int jouerCoup(int x, int y)
 {
-	// verifier x et y pas en dehors de la grille
+	// verifier x et y ne sont pas en dehors de la grille
 	if(x > gridSize || y > gridSize || x < 0 || y < 0)
 	{
 		printf("Coords out of grid!\n");
@@ -132,6 +136,7 @@ int jouerCoup(int x, int y)
 	if(DEBUG) printf("PROP RVC FROM SERVER : \n octets : %d\n code : %d(exp:4 or 5)\n renards : %d\n",
 		server_answer.octets, server_answer.code, ntohl(server_answer.data[0]));
 
+
 	if(server_answer.code == ERREUR){
 		printf("Prop failed!\n");
 		endGame();
@@ -139,19 +144,32 @@ int jouerCoup(int x, int y)
 
 	if(server_answer.code == GAGNE)
 	{
+		printf("\nYou Win!\n\n");
+
 		if(DEBUG) printf("------------END PROP------------\n\n");
 		endGame();
 	}
 
 	nb_coup++;
 	if(DEBUG) printf("------------END PROP------------\n\n");
+
+
+	/* Si un renard a été touché, on renvois quand même le nombre de renards reliés au point x y*/
+	if(server_answer.data[0] == -1)
+	{
+		renard_vivants--;
+		return jouerCoup(x,y);
+	}
+
+
 	return ntohl(server_answer.data[0]);
 }
 
-
+/* Début de la partie, le bot vas jouer*/
 int startPlay()
 {
-	nb_coup = 0;
+	printf("\n renards vivants : %d", renard_vivants);
+	printf("\n coups joués: %d", nb_coup);
 
 	/* Probabilities grid init*/
 	probaGrid = malloc((gridSize * gridSize) * sizeof(int));
@@ -159,9 +177,21 @@ int startPlay()
 	/* Probabilities grid init*/
 	answerGrid = malloc((gridSize) * sizeof(int));
 
+	printf("\n renards en 1 1 : %d\n", jouerCoup(1,1));
 
-	
+	printf("\n renards en 1 2 : %d\n", jouerCoup(1,2));
+
+	printf("\n renards en 1 3 : %d\n", jouerCoup(1,3));
+
+
+	printf("\n renards en 1 4 : %d\n", jouerCoup(1,4));
+
+	printf("\n renards en 1 5 : %d\n", jouerCoup(1,5));
+
+
+
 	// FORCE BRUT 
+	/*
 	for(int i = 0; i < gridSize; i++)
 	{
 		for(int j = 0; j<gridSize; j++)
@@ -169,21 +199,21 @@ int startPlay()
 			jouerCoup(i,j);
 		}
 	}
+	*/
 }
-
 
 
 int main(int argc, char const *argv[])
 {
-
 	/* Test de la ligne de commande*/
 	if (argc != 7) {
 		printf("Usage: %s <IP-address> <port number> <grid_size> <nb_de_renard> <user> <seed>\n", argv[0]);
 		exit(1);
 	}
 
+	/* Conversion des arguments en entier */
 	gridSize = atoi(argv[3]);
-	int nbRenards = atoi(argv[4]);
+	renard_vivants = atoi(argv[4]);
 	int seed = atoi(argv[6]);
 
 	/* Récupération du login*/
@@ -199,14 +229,14 @@ int main(int argc, char const *argv[])
 		}
 	}
 
-
+	/* Connection au serveur */
 	struct addrinfo *res;
 	struct addrinfo criteria;
 
-	/* Criteria*/
+	/* Critère pour se connecter */
 	memset(&criteria,0, sizeof(struct addrinfo));
 	criteria.ai_family = AF_UNSPEC; /* Allow IPv4 or IPv6 */
-	criteria.ai_socktype = SOCK_STREAM; //Socket addresses of any type
+	criteria.ai_socktype = SOCK_STREAM; // adresse type connecté
 	criteria.ai_protocol = 0; /* Any protocol */
 
 	/* test variable for connection*/
@@ -237,13 +267,12 @@ int main(int argc, char const *argv[])
 
 	signal(SIGINT, endProg); // ferme propropement la connection et le socket en cas de SIGINT
 
-
 	/* Initialisation de la grille*/
 	if(DEBUG) printf("--------------INIT--------------\n");
 	struct msg initBuf;
 	initBuf.code = INIT; // code INIT = 0
 	initBuf.data[0] = htonl(gridSize); // taille de la grille
-	initBuf.data[1] = htonl(nbRenards); // nombre de renards
+	initBuf.data[1] = htonl(renard_vivants); // nombre de renards
 	initBuf.data[2] = htonl(seed); // seed de la grille
 	strcpy(initBuf.login, login);
 
@@ -251,9 +280,6 @@ int main(int argc, char const *argv[])
 	int octet_sent = writeInServer(initBuf);
 	if(DEBUG) printf("INIT SND TO SERVER : \n octets envoyés : %d\n code : %d (exp:0)\n gridSize : %d\n nbRenards : %d\n seed : %d\n login : %s\n\n",
 	 octet_sent, initBuf.code, ntohl(initBuf.data[0]), ntohl(initBuf.data[1]),  ntohl(initBuf.data[2]), initBuf.login);
-
-
-
 
 	/* Réponse du serveur sur l'initialisation*/
 	struct msg server_answer = readInServer();
@@ -266,17 +292,7 @@ int main(int argc, char const *argv[])
 		server_answer.octets, server_answer.code);
 	if(DEBUG) printf("-------------END INIT-------------\n\n");
 
-	// Starting algorithms to play the game
+	// Début du déroulé de la partie
+	nb_coup = 0;
 	startPlay();
-
 }
-
-
-
-
-
-void updateProbaGrid()
-{
-
-}
-

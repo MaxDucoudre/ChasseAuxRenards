@@ -17,7 +17,7 @@
 
 #define LOGIN_MAX_SIZE 12
 
-#define DEBUG 1
+#define DEBUG 0
 
 struct msg {
     char code;
